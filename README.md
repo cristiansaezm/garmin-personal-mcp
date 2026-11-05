@@ -293,6 +293,14 @@ today. Tools that return a list wrap it as `{"results": [...]}`.
 | `garmin_get_activity` | One activity in full, with splits |
 | `garmin_get_activity_workouts` | The structured workout followed during an activity |
 | `garmin_download_activity` | Save an activity's original file (ZIP with the .fit) on the server's machine |
+| `garmin_get_activity_laps` | Every recorded lap with pace, HR, power, cadence, and intensity, from the activity file |
+| `garmin_get_activity_splits` | Even splits (1 km by default) computed from the activity's samples |
+| `garmin_get_activity_timeseries` | Pace, HR, power, cadence, and altitude averaged down to a few hundred points |
+| `garmin_get_activity_drift` | Cardiac drift: halves, quarters, and pace:HR / power:HR decoupling |
+| `garmin_get_activity_intervals` | The work repetitions of an interval session and how they faded |
+| `garmin_get_activity_zones_by_segment` | Time in HR and power zones for each stretch of an activity |
+| `garmin_compare_activities` | Several activities side by side, e.g. the same workout across weeks |
+| `garmin_get_training_weeks` | Weekly distance, time, pace, training load, and longest activity |
 | `garmin_get_profile` | Units, formats, time zone, and training-day preferences |
 | `garmin_get_heart_rate_zones` | Zone floors per sport and the HRs they're based on |
 | `garmin_get_fitness_age` | Fitness age, achievable fitness age, and its components |
@@ -300,7 +308,9 @@ today. Tools that return a list wrap it as `{"results": [...]}`.
 | `garmin_get_menstrual_day` | One day's logged symptoms, flow, and cycle detail |
 
 Weights are in grams, distances in meters, and durations in seconds, as Garmin
-returns them.
+returns them. The activity-analysis tools (laps through training weeks) read
+the activity's original FIT file in memory and return km, min:ss paces, and
+formatted times instead.
 
 ## Remote / HTTP mode
 

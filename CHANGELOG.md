@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Activity analysis tools that read the activity's original FIT file in
+  memory (nothing is saved): `garmin_get_activity_laps`,
+  `garmin_get_activity_splits`, `garmin_get_activity_timeseries`,
+  `garmin_get_activity_drift`, `garmin_get_activity_intervals`,
+  `garmin_get_activity_zones_by_segment`, and `garmin_compare_activities`,
+  plus `garmin_get_training_weeks` for weekly totals. A small built-in FIT
+  decoder reads the files, so there is no new dependency.
+
 - MCP clients now see the server's version, title, and website in
   `serverInfo` (the version was empty). The server name is still `garmin`.
 - Docker: `compose.yaml` passes `TZ` through, and the Registry's Docker
