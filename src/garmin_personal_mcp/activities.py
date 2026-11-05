@@ -6,6 +6,7 @@ from pathlib import Path
 
 from garmin_personal_api import GarminPersonalApiError
 
+from . import fit
 from .garmin_api import query
 
 
@@ -138,3 +139,45 @@ def download_activity(client, activity_id: int, directory: Path) -> dict:
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         files = archive.namelist()
     return {"path": str(path), "bytes": len(content), "files": files}
+
+
+def _original_zip(client, activity_id: int) -> bytes:
+    content = client.download_activity(activity_id)
+    if not zipfile.is_zipfile(io.BytesIO(content)):
+        raise GarminPersonalApiError(
+            f"Garmin's response for activity {activity_id} wasn't a ZIP file "
+            f"({len(content)} bytes). Try again later."
+        )
+    return content
+
+
+def load_fit(client, activity_id: int) -> dict:
+    """Reads the activity's original FIT file in memory, without saving it."""
+    with zipfile.ZipFile(io.BytesIO(_original_zip(client, activity_id))) as archive:
+        names = [n for n in archive.namelist() if n.lower().endswith(".fit")]
+        if not names:
+            raise GarminPersonalApiError(
+                f"Activity {activity_id}'s original file has no .fit inside "
+                "(it may have been imported as GPX or TCX), so it can't be analyzed."
+            )
+        data = archive.read(names[0])
+    try:
+        return fit.decode(data)
+    except fit.FitError as exc:
+        raise GarminPersonalApiError(
+            f"Couldn't read activity {activity_id}'s FIT file: {exc}"
+        ) from exc
+
+
+SEARCH_PAGE = 100
+
+
+def search_all(client, filters: ActivitySearch) -> list:
+    rows = []
+    offset = 0
+    while True:
+        page = search_activities(client, filters, limit=SEARCH_PAGE, offset=offset)
+        rows.extend(page or [])
+        if not page or len(page) < SEARCH_PAGE:
+            return rows
+        offset += SEARCH_PAGE

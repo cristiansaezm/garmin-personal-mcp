@@ -11,6 +11,12 @@ from mcp.types import ToolAnnotations
 from . import (
     __version__,
     activities,
+    activity_compare,
+    activity_effort,
+    activity_laps,
+    activity_splits,
+    activity_timeseries,
+    activity_zones,
     config,
     daily_summary,
     day,
@@ -19,6 +25,7 @@ from . import (
     nutrition,
     profile,
     sleep,
+    training_weeks,
     weight,
     wellness,
     womens_health,
@@ -520,6 +527,243 @@ async def garmin_download_activity(
     except ValueError as exc:
         raise UserInputError(str(exc)) from exc
     return await fetch(lambda c: activities.download_activity(c, activity_id, target))
+
+
+MAX_COMPARED = 10
+DEFAULT_TRAINING_WEEKS = 8
+
+
+def require_positive(name: str, value: float | None) -> None:
+    if value is not None and value <= 0:
+        raise UserInputError(f"{name} must be greater than 0, got {value}")
+
+
+@mcp.tool(title="Get activity laps", annotations=READS_GARMIN)
+async def garmin_get_activity_laps(activity_id: int) -> dict:
+    """Every lap the watch recorded for one activity (autolap kilometers,
+    manual laps, or each step of a structured workout), read from the
+    activity's original file: start offset, distance, timer time, pace
+    (min:ss per km), average and max HR, average and max power, cadence
+    (steps per minute for runs and walks), elevation gain and loss, the lap's
+    intensity (active, rest, warmup, cooldown, recovery, interval), and what
+    triggered it (manual, distance, time, ...).
+
+    activity_id: activityId from garmin_search_activities.
+    """
+    return await fetch(
+        lambda c: activity_laps.laps(activities.load_fit(c, activity_id))
+    )
+
+
+@mcp.tool(title="Get activity splits", annotations=READS_GARMIN)
+async def garmin_get_activity_splits(
+    activity_id: int,
+    every_m: int = 1000,
+    from_km: float | None = None,
+    to_km: float | None = None,
+) -> dict:
+    """Even splits computed from the second-by-second samples in the
+    activity's original file, whatever the watch's autolap setting was. Each
+    split has its km range, distance, moving time, pace (min:ss per km),
+    time-weighted average HR and power, max HR, cadence, and elevation gain
+    and loss. The last split holds the remaining distance.
+
+    activity_id: activityId from garmin_search_activities.
+    every_m: split length in meters (default 1000; 1609 for miles).
+    from_km, to_km: only split this stretch of the activity.
+    """
+    require_positive("every_m", every_m)
+    return await fetch(
+        lambda c: activity_splits.splits(
+            activities.load_fit(c, activity_id),
+            every_m,
+            from_km=from_km,
+            to_km=to_km,
+        )
+    )
+
+
+@mcp.tool(title="Get activity time series", annotations=READS_GARMIN)
+async def garmin_get_activity_timeseries(
+    activity_id: int,
+    points: int = 300,
+    from_km: float | None = None,
+    to_km: float | None = None,
+) -> dict:
+    """The activity's samples averaged into at most `points` equal stretches
+    of moving time, for plotting or finding where HR, pace, or power changed:
+    moving seconds and km at the end of each stretch, pace (min:ss per km),
+    heart rate, power, cadence, and altitude in meters.
+
+    activity_id: activityId from garmin_search_activities.
+    points: how many points to return (default 300, max 2000).
+    from_km, to_km: only this stretch of the activity, e.g. 34 to 36 for one
+    climb.
+    """
+    require_positive("points", points)
+    points = min(points, 2000)
+    return await fetch(
+        lambda c: activity_timeseries.timeseries(
+            activities.load_fit(c, activity_id),
+            points,
+            from_km=from_km,
+            to_km=to_km,
+        )
+    )
+
+
+@mcp.tool(title="Get activity cardiac drift", annotations=READS_GARMIN)
+async def garmin_get_activity_drift(
+    activity_id: int,
+    from_km: float | None = None,
+    to_km: float | None = None,
+    skip_minutes: float = 0,
+) -> dict:
+    """Cardiac drift for one activity: the analyzed stretch split into two
+    halves of equal moving time, each with pace, HR, and power; the HR rise
+    in bpm; pace:HR and power:HR decoupling in percent (how much less speed
+    or power each heartbeat bought in the second half; under about 5% is
+    aerobically steady, over 10% means HR drifted a lot); and pace, HR, and
+    power by quarter.
+
+    activity_id: activityId from garmin_search_activities.
+    from_km, to_km: analyze only this stretch, e.g. a steady block.
+    skip_minutes: leave out the first minutes (a warmup) before analyzing.
+    """
+    return await fetch(
+        lambda c: activity_effort.drift(
+            activities.load_fit(c, activity_id),
+            from_km=from_km,
+            to_km=to_km,
+            skip_minutes=skip_minutes,
+        )
+    )
+
+
+@mcp.tool(title="Get activity intervals", annotations=READS_GARMIN)
+async def garmin_get_activity_intervals(activity_id: int) -> dict:
+    """The work repetitions of an interval session, read from its laps, with
+    a summary: repetition count, total work distance and time, average pace
+    (min:ss per km), HR and power across the work, the fastest and slowest
+    repetition, how pace (seconds per km) and HR changed from the first
+    repetition to the last, and average HR in the recoveries. A structured
+    workout's step labels pick the work laps; without them, the faster laps
+    count as work (`method` says which).
+
+    activity_id: activityId from garmin_search_activities.
+    """
+    return await fetch(
+        lambda c: activity_laps.intervals(activities.load_fit(c, activity_id))
+    )
+
+
+@mcp.tool(title="Get activity zones by segment", annotations=READS_GARMIN)
+async def garmin_get_activity_zones_by_segment(
+    activity_id: int,
+    segment_km: float = 5,
+    hr_floors: list[int] | None = None,
+    power_floors: list[int] | None = None,
+) -> dict:
+    """Seconds in each heart rate and power zone for every stretch of
+    `segment_km` kilometers, with that stretch's pace, HR, and power, to see
+    where in an activity the effort moved into higher zones. zone_0 is time
+    below zone 1. Returns the zone floors used and where they came from: the
+    zones recorded in the activity file, else (HR only) the current Garmin
+    zone settings.
+
+    activity_id: activityId from garmin_search_activities.
+    segment_km: segment length in km (default 5).
+    hr_floors, power_floors: the lower bound of each zone, zone 1 first,
+    e.g. [120, 140, 155, 168, 178], to override the recorded zones.
+    """
+    require_positive("segment_km", segment_km)
+    return await fetch(
+        lambda c: activity_zones.zones_report(
+            c,
+            activity_id,
+            segment_km,
+            hr_floors=hr_floors,
+            power_floors=power_floors,
+        )
+    )
+
+
+@mcp.tool(title="Compare activities", annotations=READS_GARMIN)
+async def garmin_compare_activities(
+    activity_ids: list[int] | None = None,
+    search: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    activity_type: str | None = None,
+    limit: int = 6,
+) -> dict:
+    """Side-by-side summary of several activities, e.g. the same workout
+    across weeks: name, local start time, distance, moving time, pace
+    (min:ss per km), average HR, power, and cadence, elevation, meters per
+    heartbeat (higher is more efficient), pace:HR and power:HR decoupling in
+    percent, and for structured interval workouts the work summary from
+    garmin_get_activity_intervals. Each activity's file is downloaded, so
+    comparing many takes a while.
+
+    activity_ids: the activities to compare (up to 10), or leave it out and
+    find them with search (text in the name, e.g. "10x3"), start and end
+    (YYYY-MM-DD), and activity_type (e.g. running), newest first.
+    limit: how many matching activities to compare when searching (default
+    6, max 10).
+    """
+    ids = list(activity_ids or [])
+    if len(ids) > MAX_COMPARED:
+        raise UserInputError(f"compare at most {MAX_COMPARED} activities at a time")
+    limit = max(1, min(limit, MAX_COMPARED))
+    filters = None
+    if not ids:
+        if search is None and start is None and end is None:
+            raise UserInputError(
+                "pass activity_ids, or search/start/end to find the activities"
+            )
+        first, last = None, None
+        if start is not None or end is not None:
+            first, last = parse_range(start, end)
+        filters = activities.ActivitySearch(
+            start=first, end=last, search=search, activity_type=activity_type
+        )
+
+    def compare(client):
+        chosen = ids
+        if filters is not None:
+            chosen = activity_compare.matching_ids(client, filters, limit)
+        return activity_compare.compare(client, chosen)
+
+    return await fetch(compare)
+
+
+@mcp.tool(title="Get training weeks", annotations=READS_GARMIN)
+async def garmin_get_training_weeks(
+    start: str | None = None,
+    end: str | None = None,
+    activity_type: str | None = "running",
+) -> dict:
+    """Monday-to-Sunday training totals for every week in a range, including
+    empty weeks: activity count, distance in km, time, average pace (min:ss
+    per km), summed Garmin training load, elevation gain, and the longest
+    activity in km.
+
+    start, end: YYYY-MM-DD inclusive (default: the 8 weeks ending today).
+    activity_type: parent type key such as running or cycling (default
+    running); pass null for every activity type.
+    """
+    last = parse_day(end)
+    first = last - datetime.timedelta(weeks=DEFAULT_TRAINING_WEEKS, days=-1)
+    if start is not None:
+        first, last = parse_range(start, end)
+    filters = activities.ActivitySearch(
+        start=first, end=last, activity_type=activity_type
+    )
+    return await fetch(
+        lambda c: training_weeks.training_weeks(
+            activities.search_all(c, filters), first, last
+        )
+    )
 
 
 @mcp.tool(title="Get profile settings", annotations=READS_GARMIN)
