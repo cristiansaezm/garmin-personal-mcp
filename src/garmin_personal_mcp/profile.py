@@ -1,6 +1,9 @@
 import datetime
 
-from .garmin_api import query
+from .garmin_api import in_windows, query
+
+# Not documented in the Swagger reference; kept at the month other ranges use.
+VO2MAX_MAX_DAYS = 31
 
 
 def get_settings(client) -> dict | None:
@@ -20,4 +23,15 @@ def get_fitness_age(
     return client.get(
         f"/fitnessage-service/fitnessage/v2/{day}",
         params=query(fullHistoryScan=full_history_scan),
+    )
+
+
+def get_vo2max(client, start: datetime.date, end: datetime.date) -> list:
+    return in_windows(
+        start,
+        end,
+        VO2MAX_MAX_DAYS,
+        lambda first, last: client.get(
+            f"/metrics-service/metrics/maxmet/daily/{first}/{last}"
+        ),
     )
