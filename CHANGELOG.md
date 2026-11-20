@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `garmin_get_vo2max`: daily VO2 max estimates over any date range, from
+  the Personal API's maxmet endpoint (fetched 31 days at a time).
+
 - Activity analysis tools that read the activity's original FIT file in
   memory (nothing is saved): `garmin_get_activity_laps`,
   `garmin_get_activity_splits`, `garmin_get_activity_timeseries`,

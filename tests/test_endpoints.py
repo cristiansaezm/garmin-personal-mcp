@@ -36,6 +36,11 @@ SINGLE_REQUEST_CASES = [
     ),
     (lambda c: hrv.get_hrv(c, DAY), "/hrv-service/hrv/2026-10-20", None),
     (
+        lambda c: profile.get_vo2max(c, *WEEK),
+        "/metrics-service/metrics/maxmet/daily/2026-10-14/2026-10-20",
+        None,
+    ),
+    (
         lambda c: hrv.get_hrv_summaries(c, *WEEK),
         "/hrv-service/hrv/daily/2026-10-14/2026-10-20",
         None,

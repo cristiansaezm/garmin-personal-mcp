@@ -806,6 +806,18 @@ async def garmin_get_fitness_age(
     )
 
 
+@mcp.tool(title="Get VO2 max", annotations=READS_GARMIN)
+async def garmin_get_vo2max(start: str | None = None, end: str | None = None) -> dict:
+    """Daily VO2 max estimates across a date range, as Garmin calculates them
+    from runs and rides.
+
+    start, end: YYYY-MM-DD inclusive (default: the 7 days ending today). Any
+    length works; long ranges are fetched 31 days at a time.
+    """
+    first, last = parse_range(start, end)
+    return await fetch(lambda c: profile.get_vo2max(c, first, last))
+
+
 @mcp.tool(title="Get menstrual cycle", annotations=READS_GARMIN)
 async def garmin_get_menstrual_cycle(date: str | None = None) -> dict:
     """Menstrual cycle summary as of a date: current phase, day in cycle, days
